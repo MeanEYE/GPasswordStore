@@ -220,7 +220,8 @@ class MainWindow(Gtk.ApplicationWindow):
 						).communicate()
 
 		# copy password to clipboard
-		self._clipboard.set_text(output[0], -1)
+		password = output[0].split('\n')[0]
+		self._clipboard.set_text(password, -1)
 
 		# schedule autodestruct
 		GLib.timeout_add_seconds(self.TIMEOUT, self.__handle_timeout)
