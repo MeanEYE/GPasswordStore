@@ -31,8 +31,11 @@ from gi.repository import Gtk, Gdk, GLib
 
 
 class Column:
-	PATH = 0
-	SEARCH = 1
+	NAME = 0
+	PATH = 1
+	SEARCH = 2
+	ICON = 3
+	IS_DIRECTORY = 4
 
 
 class GPasswordStore(Gtk.Application):
@@ -66,9 +69,10 @@ class MainWindow(Gtk.ApplicationWindow):
 		Gtk.ApplicationWindow.__init__(self, application=application)
 
 		self._clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+		self._iter_referrence = {}
 
 		# configure window
-		self.set_default_size(400, 300)
+		self.set_default_size(400, 500)
 		self.set_position(Gtk.WindowPosition.CENTER)
 		self.set_default_icon_name('password')
 		self.set_wmclass(GPasswordStore.TITLE, GPasswordStore.TITLE)
@@ -81,7 +85,7 @@ class MainWindow(Gtk.ApplicationWindow):
 		self.set_titlebar(header_bar)
 
 		# create search entry
-		self._entry = Gtk.Entry.new()
+		self._entry = Gtk.SearchEntry.new()
 		header_bar.set_custom_title(self._entry)
 
 		self._entry.grab_focus()
@@ -90,7 +94,7 @@ class MainWindow(Gtk.ApplicationWindow):
 		# create item list
 		scrolled_window = Gtk.ScrolledWindow()
 		scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.ALWAYS)
-		self._store = Gtk.ListStore.new((str, str))
+		self._store = Gtk.TreeStore.new((str, str, str, str, bool))
 		self._list = Gtk.TreeView.new_with_model(self._store)
 
 		self._list.set_headers_visible(False)
@@ -104,16 +108,24 @@ class MainWindow(Gtk.ApplicationWindow):
 		self.add(scrolled_window)
 
 		# create cell renders
+		cell_icon = Gtk.CellRendererPixbuf.new()
 		cell_text = Gtk.CellRendererText.new()
+		cell_text.set_padding(5, 5)
 
 		# create columns
 		column_path = Gtk.TreeViewColumn.new()
+		column_path.pack_start(cell_icon, False)
 		column_path.pack_start(cell_text, True)
-		column_path.add_attribute(cell_text, 'text', Column.PATH)
+
+		column_path.add_attribute(cell_icon, 'icon_name', Column.ICON)
+		column_path.add_attribute(cell_text, 'text', Column.NAME)
+
+		column_path.set_sort_column_id(Column.PATH)
 		self._list.append_column(column_path)
 
 		# populate data
 		self.__populate_data()
+		self._list.expand_all()
 
 		# highlight first item
 		first_iter = self._store.get_iter_first()
@@ -141,21 +153,72 @@ class MainWindow(Gtk.ApplicationWindow):
 			if relative_path.startswith('.'):
 				continue
 
+			# get parent iter for tree storage
+			parent_iter = self.__get_parent_iter(relative_path)
+
 			# add found files
 			for file_name in found_files:
 				if not file_name.endswith('.gpg'):
 					continue
 
 				full_path = os.path.join(relative_path, file_name)[:-4]
-				self._store.append((full_path, full_path.lower()))
+				self._store.append(parent_iter, (
+						os.path.basename(full_path),
+						full_path,
+						full_path.lower(),
+						'empty',
+						False
+					))
+
+	def __get_parent_iter(self, path):
+		"""Get parent iter for specified path.
+
+		If iter doesn't exist system will create every missing parent
+		iter in the link creating a proper structure.
+
+		"""
+		path_elements = path.split(os.sep)
+
+		# account for root elements
+		if path == '':
+			return None
+
+		# create path fragments
+		current_path = ''
+		for element in path_elements:
+			parent_path = current_path
+			current_path = os.path.join(current_path, element)
+
+			if element[0] == '.':
+				return None
+
+			# path fragment wasn't found in referrence dictionary
+			if current_path not in self._iter_referrence:
+				if parent_path != '':
+					parent_iter = self._iter_referrence[parent_path]
+				else:
+					parent_iter = None
+
+				self._iter_referrence[current_path] = self._store.append(parent_iter, (
+						element,
+						current_path,
+						current_path.lower(),
+						'folder',
+						True
+					))
+
+		return self._iter_referrence[path]
 
 	def __search_compare(self, model, column, key, current_iter):
 		"""Comparison function for quick search."""
 		path = model.get_value(current_iter, Column.SEARCH)
+		is_directory = model.get_value(current_iter, Column.IS_DIRECTORY)
+
+		# match words
 		words = key.lower().split()
 		matches = map(lambda word: word in path, words)
 
-		return sum(matches) != len(words)
+		return is_directory or sum(matches) != len(words)
 
 	def __handle_list_focus(self, widget, data=None):
 		"""Handle list gaining focus."""
@@ -210,6 +273,21 @@ class MainWindow(Gtk.ApplicationWindow):
 		# prepare data for password store
 		selected_iter = self._store.get_iter(self._list.get_cursor()[0])
 		selected_path = self._store.get_value(selected_iter, Column.PATH)
+
+		# check if selected iter is directory, if so let the user know
+		if self._store.get_value(selected_iter, Column.IS_DIRECTORY):
+			message = Gtk.MessageDialog(
+						self,
+						Gtk.DialogFlags.DESTROY_WITH_PARENT,
+						Gtk.MessageType.WARNING,
+						Gtk.ButtonsType.OK,
+						'You''ve selected directory node which doesn''t '
+						'contain any passwords. Please select read password '
+						'entry to decode!'
+					)
+			message.run()
+			message.destroy()
+			return
 
 		# communicate with password store through pipe
 		environment = os.environ.copy()
