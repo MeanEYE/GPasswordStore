@@ -281,8 +281,8 @@ class MainWindow(Gtk.ApplicationWindow):
 						Gtk.DialogFlags.DESTROY_WITH_PARENT,
 						Gtk.MessageType.WARNING,
 						Gtk.ButtonsType.OK,
-						'You''ve selected directory node which doesn''t '
-						'contain any passwords. Please select read password '
+						'You\'ve selected directory node which doesn\'t '
+						'contain any passwords. Please select password '
 						'entry to decode!'
 					)
 			message.run()
