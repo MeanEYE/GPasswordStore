@@ -291,17 +291,31 @@ class MainWindow(Gtk.ApplicationWindow):
 
 		# communicate with password store through pipe
 		environment = os.environ.copy()
-		output = subprocess.Popen(
+		output, errors = subprocess.Popen(
 							('pass', selected_path),
 							env=environment,
-							stdout=subprocess.PIPE
+							stdout=subprocess.PIPE,
+							stderr=subprocess.PIPE
 						).communicate()
 
+		# show error message
+		if (len(errors) > 0):
+			message = Gtk.MessageDialog(
+						self,
+						Gtk.DialogFlags.DESTROY_WITH_PARENT,
+						Gtk.MessageType.ERROR,
+						Gtk.ButtonsType.OK,
+						'The following error(s) occurred:\n{}'.format(errors)
+					)
+			message.run()
+			message.destroy()
+			return
+
 		# copy password to clipboard
-		password = output[0].split('\n')[0]
+		password = output.split('\n')[0]
 		self._clipboard.set_text(password, -1)
 
-		# schedule autodestruct
+		# schedule auto-destruct
 		GLib.timeout_add_seconds(self.TIMEOUT, self.__handle_timeout)
 
 		# close window immediately
