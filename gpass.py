@@ -63,7 +63,7 @@ class GPasswordStore(Gtk.Application):
 
 class MainWindow(Gtk.ApplicationWindow):
 	"""Main application window which copies passwords to clipboard."""
-	TIMEOUT = 30
+	TIMEOUT = 45
 
 	def __init__(self, application):
 		Gtk.ApplicationWindow.__init__(self, application=application)
@@ -80,16 +80,28 @@ class MainWindow(Gtk.ApplicationWindow):
 
 		# create header bar
 		header_bar = Gtk.HeaderBar.new()
-		header_bar.set_show_close_button(False)
+		header_bar.set_show_close_button(True)
 		header_bar.set_title(GPasswordStore.TITLE)
 		self.set_titlebar(header_bar)
 
+		# create button box
+		button_new = Gtk.Button.new_from_icon_name('add', Gtk.IconSize.BUTTON)
+		header_bar.pack_start(button_new)
+
+		# window widget container
+		box = Gtk.VBox.new(False, 0)
+		self.add(box)
+
 		# create search entry
 		self._entry = Gtk.SearchEntry.new()
-		header_bar.set_custom_title(self._entry)
-
 		self._entry.grab_focus()
 		self._entry.connect('key-press-event', self.__handle_entry_key_press)
+
+		search_bar = Gtk.SearchBar.new()
+		search_bar.set_search_mode(True)
+		search_bar.add(self._entry)
+		search_bar.connect_entry(self._entry)
+		box.pack_start(search_bar, False, False, 0)
 
 		# create item list
 		scrolled_window = Gtk.ScrolledWindow()
@@ -105,7 +117,7 @@ class MainWindow(Gtk.ApplicationWindow):
 		self._list.connect('row-activated', self.__handle_list_row_activated)
 
 		scrolled_window.add(self._list)
-		self.add(scrolled_window)
+		box.pack_start(scrolled_window, True, True, 0)
 
 		# create cell renders
 		cell_icon = Gtk.CellRendererPixbuf.new()
@@ -166,7 +178,7 @@ class MainWindow(Gtk.ApplicationWindow):
 						os.path.basename(full_path),
 						full_path,
 						full_path.lower(),
-						'empty',
+						'application-pgp-keys',
 						False
 					))
 
@@ -274,19 +286,8 @@ class MainWindow(Gtk.ApplicationWindow):
 		selected_iter = self._store.get_iter(self._list.get_cursor()[0])
 		selected_path = self._store.get_value(selected_iter, Column.PATH)
 
-		# check if selected iter is directory, if so let the user know
+		# make sure we are not trying to get password from directory node
 		if self._store.get_value(selected_iter, Column.IS_DIRECTORY):
-			message = Gtk.MessageDialog(
-						self,
-						Gtk.DialogFlags.DESTROY_WITH_PARENT,
-						Gtk.MessageType.WARNING,
-						Gtk.ButtonsType.OK,
-						'You\'ve selected directory node which doesn\'t '
-						'contain any passwords. Please select password '
-						'entry to decode!'
-					)
-			message.run()
-			message.destroy()
 			return
 
 		# communicate with password store through pipe
